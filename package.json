@@ -1,7 +1,7 @@
 {
-  "name": "r3f-vite-starter",
+  "name": "e-commerce-gallery",
   "private": true,
-  "homepage": "https://khushalGrover.github",
+  "homepage": "/",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
