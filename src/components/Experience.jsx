@@ -60,6 +60,8 @@ function Frames({ images, q = new THREE.Quaternion(), p = new THREE.Vector3() })
       onClick={(e) => (e.stopPropagation(), setLocation(clicked.current === e.object ? '/' : '/item/' + e.object.name))}
       onPointerMissed={() => setLocation('/')}>
       {images.map((props) => <Frame key={props.url} {...props} /> /* prettier-ignore */)}
+      <Image raycast={() => null} transparent={true} scale={[.3, .3, .3]} position={[1, .1, 4]} rotation={[-Math.PI / 2, 0, 0]} url="./public/arrow1.png" /> 
+      <Image raycast={() => null} transparent={true} scale={[.3, .3, .3]} position={[-1, .1, 4]} rotation={[-Math.PI / 2, 0, 0]} url="./public/arrow2.png" /> 
     </group>
   )
 }
