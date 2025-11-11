@@ -1,99 +1,104 @@
 import * as THREE from 'three'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, extend, useFrame } from '@react-three/fiber'
-import { Image, ScrollControls, useScroll, Billboard, Text } from '@react-three/drei'
-import { generate } from 'random-words'
-import { easing, geometry } from 'maath'
+import { useEffect, useRef, useState } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
+import { useCursor, MeshReflectorMaterial, Image, Text, Environment } from '@react-three/drei'
+import { useRoute, useLocation } from 'wouter'
+import { easing } from 'maath'
+import getUuid from 'uuid-by-string'
 
-extend(geometry)
+const GOLDENRATIO = 1.61803398875
 
-export const Experience = () => (
-  <Canvas dpr={[1, 1.5]}>
-    <ScrollControls pages={4} infinite>
-      <Scene position={[0, 1.5, 0]} />
-    </ScrollControls>
+export const Experience = ({ images }) => (
+  <Canvas dpr={[1, 1.5]} camera={{ fov: 70, position: [0, 2, 15] }}>
+    <color attach="background" args={['#191920']} />
+    <fog attach="fog" args={['#191920', 0, 15]} />
+    <group position={[0, -0.5, 0]}>
+      <Frames images={images} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[50, 50]} />
+        <MeshReflectorMaterial
+          blur={[300, 100]}
+          resolution={2048}
+          mixBlur={1}
+          mixStrength={80}
+          roughness={1}
+          depthScale={1.2}
+          minDepthThreshold={0.4}
+          maxDepthThreshold={1.4}
+          color="#050505"
+          metalness={0.5}
+        />
+      </mesh>
+    </group>
+    <Environment preset="city" />
   </Canvas>
 )
 
-function Scene({ children, ...props }) {
+function Frames({ images, q = new THREE.Quaternion(), p = new THREE.Vector3() }) {
   const ref = useRef()
-  const scroll = useScroll()
-  const [hovered, hover] = useState(null)
-  useFrame((state, delta) => {
-    ref.current.rotation.y = -scroll.offset * (Math.PI * 2) // Rotate contents
-    state.events.update() // Raycasts every frame rather than on pointer-move
-    easing.damp3(state.camera.position, [-state.pointer.x * 2, state.pointer.y * 2 + 4.5, 9], 0.3, delta)
-    state.camera.lookAt(0, 0, 0)
+  const clicked = useRef()
+  const [, params] = useRoute('/item/:id')
+  const [, setLocation] = useLocation()
+  useEffect(() => {
+    clicked.current = ref.current.getObjectByName(params?.id)
+    if (clicked.current) {
+      clicked.current.parent.updateWorldMatrix(true, true)
+      clicked.current.parent.localToWorld(p.set(0, GOLDENRATIO / 2, 1.25))
+      clicked.current.parent.getWorldQuaternion(q)
+    } else {
+      p.set(0, 0, 5.5)
+      q.identity()
+    }
+  })
+  useFrame((state, dt) => {
+    easing.damp3(state.camera.position, p, 0.4, dt)
+    easing.dampQ(state.camera.quaternion, q, 0.4, dt)
   })
   return (
-    <group ref={ref} {...props}>
-      <Cards category="spring" from={0} len={Math.PI / 4} onPointerOver={hover} onPointerOut={hover} />
-      <Cards category="summer" from={Math.PI / 4} len={Math.PI / 2} position={[0, 0.4, 0]} onPointerOver={hover} onPointerOut={hover} />
-      <Cards category="autumn" from={Math.PI / 4 + Math.PI / 2} len={Math.PI / 2} onPointerOver={hover} onPointerOut={hover} />
-      <Cards category="winter" from={Math.PI * 1.25} len={Math.PI * 2 - Math.PI * 1.25} position={[0, -0.4, 0]} onPointerOver={hover} onPointerOut={hover} />
-      <ActiveCard hovered={hovered} />
+    <group
+      ref={ref}
+      onClick={(e) => (e.stopPropagation(), setLocation(clicked.current === e.object ? '/' : '/item/' + e.object.name))}
+      onPointerMissed={() => setLocation('/')}>
+      {images.map((props) => <Frame key={props.url} {...props} /> /* prettier-ignore */)}
+      <Image raycast={() => null} transparent={true} scale={[.3, .3, .3]} position={[1, .1, 4]} rotation={[-Math.PI / 2, 0, 0]} url="./public/arrow1.png" /> 
+      <Image raycast={() => null} transparent={true} scale={[.3, .3, .3]} position={[-1, .1, 4]} rotation={[-Math.PI / 2, 0, 0]} url="./public/arrow2.png" /> 
     </group>
   )
 }
 
-function Cards({ category, data, from = 0, len = Math.PI * 2, radius = 5.25, onPointerOver, onPointerOut, ...props }) {
-  const [hovered, hover] = useState(null)
-  const amount = Math.round(len * 22)
-  const textPosition = from + (amount / 2 / amount) * len
-  return (
-    <group {...props}>
-      <Billboard position={[Math.sin(textPosition) * radius * 1.4, 0.5, Math.cos(textPosition) * radius * 1.4]}>
-        <Text fontSize={0.25} anchorX="center" color="black">
-          {category}
-        </Text>
-      </Billboard>
-      {Array.from({ length: amount - 3 /* minus 3 images at the end, creates a gap */ }, (_, i) => {
-        const angle = from + (i / amount) * len
-        return (
-          <Card
-            key={angle}
-            onPointerOver={(e) => (e.stopPropagation(), hover(i), onPointerOver(i))}
-            onPointerOut={() => (hover(null), onPointerOut(null))}
-            position={[Math.sin(angle) * radius, 0, Math.cos(angle) * radius]}
-            rotation={[0, Math.PI / 2 + angle, 0]}
-            active={hovered !== null}
-            hovered={hovered === i}
-            url={`/img${Math.floor(i % 10) + 1}.jpg`}
-          />
-        )
-      })}
-    </group>
-  )
-}
-
-function Card({ url, active, hovered, ...props }) {
-  const ref = useRef()
-  useFrame((state, delta) => {
-    const f = hovered ? 1.4 : active ? 1.25 : 1
-    easing.damp3(ref.current.position, [0, hovered ? 0.25 : 0, 0], 0.1, delta)
-    easing.damp3(ref.current.scale, [1.618 * f, 1 * f, 1], 0.15, delta)
+function Frame({ url, c = new THREE.Color(), ...props }) {
+  const image = useRef()
+  const frame = useRef()
+  const [, params] = useRoute('/item/:id')
+  const [hovered, hover] = useState(false)
+  const [rnd] = useState(() => Math.random())
+  const name = getUuid(url)
+  const isActive = params?.id === name
+  useCursor(hovered)
+  useFrame((state, dt) => {
+    image.current.material.zoom = 2 + Math.sin(rnd * 10000 + state.clock.elapsedTime / 3) / 2
+    easing.damp3(image.current.scale, [0.85 * (!isActive && hovered ? 0.85 : 1), 0.9 * (!isActive && hovered ? 0.905 : 1), 1], 0.1, dt)
+    easing.dampC(frame.current.material.color, hovered ? 'orange' : 'white', 0.1, dt)
   })
   return (
     <group {...props}>
-      <Image ref={ref} transparent radius={0.075} url={url} scale={[1.618, 1, 1]} side={THREE.DoubleSide} />
-    </group>
-  )
-}
-
-function ActiveCard({ hovered, ...props }) {
-  const ref = useRef()
-  const name = useMemo(() => generate({ exactly: 2 }).join(' '), [hovered])
-  useLayoutEffect(() => void (ref.current.material.zoom = 0.8), [hovered])
-  useFrame((state, delta) => {
-    easing.damp(ref.current.material, 'zoom', 1, 0.5, delta)
-    easing.damp(ref.current.material, 'opacity', hovered !== null, 0.3, delta)
-  })
-  return (
-    <Billboard {...props}>
-      <Text fontSize={0.5} position={[2.15, 3.85, 0]} anchorX="left" color="black">
-        {hovered !== null && `${name}\n${hovered}`}
+      <mesh
+        name={name}
+        onPointerOver={(e) => (e.stopPropagation(), hover(true))}
+        onPointerOut={() => hover(false)}
+        scale={[1, GOLDENRATIO, 0.05]}
+        position={[0, GOLDENRATIO / 2, 0]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#151515" metalness={0.5} roughness={0.5} envMapIntensity={2} />
+        <mesh ref={frame} raycast={() => null} scale={[0.9, 0.93, 0.9]} position={[0, 0, 0.2]}>
+          <boxGeometry />
+          <meshBasicMaterial toneMapped={false} fog={false} />
+        </mesh>
+        <Image raycast={() => null} ref={image} position={[0, 0, 0.7]} url={url} />
+      </mesh>
+      <Text maxWidth={0.1} anchorX="left" anchorY="top" position={[0.55, GOLDENRATIO, 0]} fontSize={0.025}>
+        {name.split('-').join(' ')}
       </Text>
-      <Image ref={ref} transparent radius={0.3} position={[0, 1.5, 0]} scale={[3.5, 1.618 * 3.5, 0.2, 1]} url={`/img${Math.floor(hovered % 10) + 1}.jpg`} />
-    </Billboard>
+    </group>
   )
 }
